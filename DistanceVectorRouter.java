@@ -11,6 +11,7 @@ public class DistanceVectorRouter extends Router {
     public static class Generator extends Router.Generator {
         public Router createRouter(int id, NetworkInterface nic) {
             return new DistanceVectorRouter(id, nic);
+            //create routerTable hashmap
         }
     }
 
