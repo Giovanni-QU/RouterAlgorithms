@@ -1,3 +1,4 @@
+
 /***************
  * DistanceVectorRouter
  * Author: Christian Duncan
@@ -5,83 +6,149 @@
  * Represents a router that uses a Distance Vector Routing algorithm.
  ***************/
 import java.util.ArrayList;
-import java.util.Hashmap;
+import java.util.HashMap;
+
 public class DistanceVectorRouter extends Router {
-    // A generator for the given DistanceVectorRouter class
-    public static class Generator extends Router.Generator {
-        public Router createRouter(int id, NetworkInterface nic) {
-            return new DistanceVectorRouter(id, nic);
-            //create routerTable hashmap
-        }
-    }
+	// A generator for the given DistanceVectorRouter class
+	public static class Generator extends Router.Generator {
 
-     public static class PingPacket {
-        // This is how we will store our Packet Header information
-        
-        boolean ping;  // The payload!
-        long timestamp;
-        public PingPacket() {
-                ping = false;
-                timestamp = System.currentTimeMillis();
-       
-        }
-    }
+		public Router createRouter(int id, NetworkInterface nic) {
+			return new DistanceVectorRouter(id, nic);
+			// create routerTable hashmap
+		}
+	}
+	public static class DistanceVectorPacket {
+		// This is how we will store our Packet Header information
 
-    Debug debug;
-    
-    public DistanceVectorRouter(int nsap, NetworkInterface nic) {
-        super(nsap, nic);
-        debug = Debug.getInstance();  // For debugging!
-         HashMap<int, int> routingTable = new HashMap<int, int>();
-    
-        //new method to set array
-       //getOutgoinglinks is neighbors
-       //make ping packet, set timestamp and then calculate time diff when its received to get distance
-    
-    }
-        long delay = 1000;
-    public void run() {
-        long timeToReCalc = System.currentTimeMillis() + delay;
+		HashMap<Integer, Integer> routingDistance;
 
-        while (true) {
-            if(System.currentTimeMillis() > timeToReCalc){
-                 calcDistances();
-                 timeToReCalc = System.currentTimeMillis() + delay;
-                }  
-            // See if there is anything to process
-            boolean process = false;
-            NetworkInterface.TransmitPair toSend = nic.getTransmit();
-            if (toSend != null) {
-                // There is something to send out
-                process = true;
-                debug.println(3, "(DistanceVectorRouter.run): I am being asked to transmit: " + toSend.data + " to the destination: " + toSend.destination);
-            }
+		public DistanceVectorPacket(HashMap<Integer, Integer> routingDistance) {
+			this.routingDistance = routingDistance;
 
-            NetworkInterface.ReceivePair toRoute = nic.getReceived();
-            if (toRoute != null) {
-                // There is something to route through - or it might have arrived at destination
-                process = true;
-                if(toRoute.data instanceof PingPacket){
-                    //packet recieved
-                    PingPacket p = (PingPacket) toRoute.data;
-                debug.println(3, "(DistanceVectorRouter.run): PingPacket Recieved! " + toRoute.originator + " to the destination: " + p.ping);
-                    //if packet is recieved and ping is false, send ack, if false calc time stamp diff/2
-                }
-            }
+		}
+	}
 
-            if (!process) {
-                // Didn't do anything, so sleep a bit
-                try { Thread.sleep(1); } catch (InterruptedException e) { }
-            }
-        }
-    }
-    public void calcDistances(){
-        for(int i=0;i<toSend.getOutgoinglinks.size();i++){
-            //make packet
-            PingPacket p = new PingPacket();
-            nic.sendOnLink(i,p);
-        }
+	public static class PingPacket {
+		// This is how we will store our Packet Header information
 
-        
-    }
+		boolean ping; // The payload!
+		long timestamp;
+
+		public PingPacket() {
+			ping = false;
+			timestamp = System.currentTimeMillis();
+
+		}
+	}
+
+	Debug debug;
+	int distances[];
+	HashMap<Integer, Integer> routingDistance; // Distances to all nodes in the network
+	HashMap<Integer, Integer> routingLink; // link to use to route to all those nodes
+
+	public DistanceVectorRouter(int nsap, NetworkInterface nic) {
+		super(nsap, nic);
+		debug = Debug.getInstance(); // For debugging!
+
+		int numLinks = nic.getOutgoingLinks().size();
+		distances = new int[numLinks];
+		routingDistance = new HashMap<>();
+		routingLink = new HashMap<>();
+
+		// new method to set array
+		// getOutgoinglinks is neighbors
+		// make ping packet, set timestamp and then calculate time diff when its
+		// received to get distance
+
+	}
+
+	long delay = 1000;
+
+	public void run() {
+		long timeToReCalc = System.currentTimeMillis() + delay;
+
+		while (true) {
+			if (System.currentTimeMillis() > timeToReCalc) {
+				calcDistances();
+				buildRoutingTable();
+				timeToReCalc = System.currentTimeMillis() + delay;
+			}
+			// See if there is anything to process
+			boolean process = false;
+			NetworkInterface.TransmitPair toSend = nic.getTransmit();
+			if (toSend != null) {
+				// There is something to send out
+				process = true;
+				debug.println(3, "(DistanceVectorRouter.run): I am being asked to transmit: " + toSend.data
+						+ " to the destination: " + toSend.destination);
+			}
+
+			NetworkInterface.ReceivePair toRoute = nic.getReceived();
+			if (toRoute != null) {
+				// There is something to route through - or it might have arrived at destination
+				process = true;
+				if (toRoute.data instanceof PingPacket) {
+					processPingPacket(toRoute.originator, (PingPacket) toRoute.data);
+					// packet recieved
+					// PingPacket p = (PingPacket) toRoute.data;
+					//
+				}
+				if (toRoute.data instanceof DistanceVectorPacket) {
+					//arraylist of hashmaps
+			}
+
+			if (!process) {
+				// Didn't do anything, so sleep a bit
+				try {
+					Thread.sleep(1);
+				} catch (InterruptedException e) {
+				}
+			}
+		}
+	}
+
+	public void processPingPacket(int originator, PingPacket p) {
+		debug.println(3,
+				"(DistanceVectorRouter.pPP): PingPacket Recieved! " + originator + " to the destination: " + p.ping);
+		// if packet is recieved and ping is false, send ack, if false calc time stamp
+		// diff/2
+		int i = nic.getOutgoingLinks().indexOf(originator);
+		if (p.ping) {
+			// calculate time taken
+			long dist = (System.currentTimeMillis() - p.timestamp) / 2;
+			debug.println(3, "DistanceVectorRouter.pPP): nsap = " + nsap + " link = " + i + " distance = " + dist);
+			distances[i] = (int) dist;
+		} else {
+			// send back
+			p.ping = true;
+
+			nic.sendOnLink(i, p);
+		}
+	}
+
+	public void calcDistances() {
+
+		for (int i = 0; i < nic.getOutgoingLinks().size(); i++) {
+			// make packet
+			PingPacket p = new PingPacket();
+			nic.sendOnLink(i, p);
+		}
+
+	}
+
+	public void buildRoutingTable() {
+		//start a new table, insert our info
+		routingDistance = new HashMap<>();
+		routingLink = new HashMap<>();
+		routingDistance.put(nsap, 0);
+		routingLink.put(nsap, -1);
+		//build the table from the other neighbor info
+		
+		//send our routing table to our neighbors
+		for (int i = 0; i < nic.getOutgoingLinks().size(); i++) {
+			// make packet
+			DistanceVectorPacket p = new DistanceVectorPacket(routingDistance);
+			nic.sendOnLink(i, p);
+		}
+	}
 }
