@@ -45,6 +45,7 @@ public class DistanceVectorRouter extends Router {
 	int distances[];
 	HashMap<Integer, Integer> routingDistance; // Distances to all nodes in the network
 	HashMap<Integer, Integer> routingLink; // link to use to route to all those nodes
+	ArrayList<HashMap<Integer, Integer>> nMapList; //this is an arraylist of neighbor distances
 
 	public DistanceVectorRouter(int nsap, NetworkInterface nic) {
 		super(nsap, nic);
@@ -54,6 +55,11 @@ public class DistanceVectorRouter extends Router {
 		distances = new int[numLinks];
 		routingDistance = new HashMap<>();
 		routingLink = new HashMap<>();
+		nMapList = new ArrayList<>(numLinks);
+		for(int i =0; i< numLinks; i++){
+			distances[i]=10000;  // assume large delay initially, 10 seconds
+			nMapList.add(new HashMap<>());  //allocated memory for hashmap in arraylist 
+		}
 
 		// new method to set array
 		// getOutgoinglinks is neighbors
@@ -95,6 +101,8 @@ public class DistanceVectorRouter extends Router {
 				}
 				if (toRoute.data instanceof DistanceVectorPacket) {
 					//arraylist of hashmaps
+					processDistanceVectorPacket(toRoute.originator, (DistanceVectorPacket)toRoute.data);
+				}
 			}
 
 			if (!process) {
@@ -104,7 +112,17 @@ public class DistanceVectorRouter extends Router {
 				} catch (InterruptedException e) {
 				}
 			}
+			
 		}
+	}
+
+	private void processDistanceVectorPacket(int o, DistanceVectorPacket d) {
+
+		debug.println(4,
+				"(DistanceVectorRouter.pDV): Distance Vector Packet Recieved! " + o + ": " + d.routingDistance);
+
+		int link = nic.getOutgoingLinks().indexOf(o);
+		nMapList.set(link, d.routingDistance);
 	}
 
 	public void processPingPacket(int originator, PingPacket p) {
@@ -142,7 +160,21 @@ public class DistanceVectorRouter extends Router {
 		routingLink = new HashMap<>();
 		routingDistance.put(nsap, 0);
 		routingLink.put(nsap, -1);
+
 		//build the table from the other neighbor info
+		for(int i = 0; i<distances.length; i++){
+			//iterate through each link
+			HashMap<Integer,Integer> neighborMap= nMapList.get(i);
+			for(Integer dest: neighborMap.keySet()){
+				int dist = neighborMap.get(dest) + distances[i];
+				Integer bestDistance = routingDistance.get(dest);
+				if(bestDistance == null || dist < bestDistance){
+					routingDistance.put(dest, dist);
+					routingLink.put(dest, i);
+				}
+			}
+		}
+		//print out table
 		
 		//send our routing table to our neighbors
 		for (int i = 0; i < nic.getOutgoingLinks().size(); i++) {
