@@ -5,6 +5,7 @@
  * Represents a router that uses a Distance Vector Routing algorithm.
  ***************/
 import java.util.ArrayList;
+import java.util.HashMap;
 
 public class LinkStateRouter extends Router {
     // A generator for the given LinkStateRouter class
@@ -16,12 +17,17 @@ public class LinkStateRouter extends Router {
     public static class LinkStatePacket {
 		// This is how we will store our Packet Header information
 
-		ArrayList<Integer> neighbors; 
+		HashMap<Integer, Integer> neighborDistance; 
+        int source; //source of this packet
+        int sequenceNum;
         //not sure what exactly to send in the packet, I think it should send its neighbors to every other node,
         //and then each node independently calcs neighbor distances.
-		public LinkStatePacket(ArrayList<Integer> neighbors) {
-			this.neighbors = neighbors;
-
+      //send to nieghors, create new sequence numer
+        //send list of neighors and distances hashmap key is neighor id, value is distance (int, long)
+		public LinkStatePacket(HashMap<Integer, Integer> neighborDistance, int nsap,int currSeqNum) {
+			this.neighborDistance = neighborDistance;
+            this.source = nsap;
+            this.sequenceNum = currSeqNum;
 		}
 	}
 public static class PingPacket {
@@ -38,23 +44,25 @@ public static class PingPacket {
 	}
     Debug debug;
     int distances[];//the distance to each neighbor of this node
-    HashMap<Integer, ArrayList<Integer, Integer>> networkGraph; //the graph of the network containing each node and then each node's neighbors
-    HashMap<Integer, Integer> routingTable; //each node in the graph and distance to that node
+    HashMap<Integer, HashMap<Integer, Integer>> networkGraph; //the graph of the network containing each node and then each node's neighbors and distance to that neighot
+    HashMap<Integer, Integer> nodeSeqNums; //used for tracking seq num for new link state packets
+    int currSeqNum;
     public LinkStateRouter(int nsap, NetworkInterface nic) {
         super(nsap, nic);
         debug = Debug.getInstance();  // For debugging!
         int numLinks = nic.getOutgoingLinks().size();
         distances = new int[numLinks];
         networkGraph = new HashMap<>();
-        routingTable = new HashMap<>();
-      
+        currSeqNum = 0;
+        nodeSeqNums = new HashMap<>();
     }
-long delay = 1000;
+    long delay = 1000;
     public void run() {
         long timeToReCalc = System.currentTimeMillis() + delay;
         while (true) {
             if (System.currentTimeMillis() > timeToReCalc) {
 				sendPing();
+                sendLinkPacket();
 				timeToReCalc = System.currentTimeMillis() + delay;
 			}
             // See if there is anything to process
@@ -62,6 +70,14 @@ long delay = 1000;
             NetworkInterface.TransmitPair toSend = nic.getTransmit();
             if (toSend != null) {
                 // There is something to send out
+                process = true;
+                
+                debug.println(3, "(LinkStateRouter.run): I am being asked to transmit: " + toSend.data + " to the destination: " + toSend.destination);
+            }
+
+            NetworkInterface.ReceivePair toRoute = nic.getReceived();
+            if (toRoute != null) {
+                // There is something to route through - or it might have arrived at destination
                 process = true;
                 if (toRoute.data instanceof PingPacket) {
 					processPingPacket(toRoute.originator, (PingPacket) toRoute.data);
@@ -71,15 +87,8 @@ long delay = 1000;
 				}
                 if (toRoute.data instanceof LinkStatePacket) {
 					
-					processLinkStatePacket(); //not implemented yet
+					processLinkStatePacket(toRoute.originator, (LinkStatePacket) toRoute.data); //not implemented yet
 				}
-                debug.println(3, "(LinkStateRouter.run): I am being asked to transmit: " + toSend.data + " to the destination: " + toSend.destination);
-            }
-
-            NetworkInterface.ReceivePair toRoute = nic.getReceived();
-            if (toRoute != null) {
-                // There is something to route through - or it might have arrived at destination
-                process = true;
                 debug.println(3, "(LinkStateRouter.run): I am being asked to transmit: " + toSend.data + " to the destination: " + toSend.destination);
             }
 
@@ -90,17 +99,30 @@ long delay = 1000;
         }
     }
   public void sendPing(){
-      for (int i = 0; i < numLinks; i++) {
+      for (int i = 0; i < nic.getOutgoingLinks().size(); i++) {
 			// make packet
 			PingPacket p = new PingPacket();
 			nic.sendOnLink(i, p);
 		}
   }
   public void sendLinkPacket(){
-      LinkStatePacket p = new LinkStatePacket(nic.getOutgoingLinks);
-      //not sure how to send to all nodes in the network
+      HashMap<Integer, Integer> neighborDistance = new HashMap<>();
+        currSeqNum++;
+      for(int i = 0;i<distances.length;i++){
+         neighborDistance.put(nic.getOutgoingLinks().get(i), distances[i]);
+         //populate nieghor distances
+      }
+    
+    for(int i = 0;i<nic.getOutgoingLinks().size();i++){
+  LinkStatePacket p = new LinkStatePacket(neighborDistance, nsap, currSeqNum);
+     //send to all neighors
+     nic.sendOnLink(i, p);
+
+    }
+    
   }
   public void processPingPacket(int originator, PingPacket p) {
+
 		debug.println(3,
 				"(LinkStateRouter.pPP): PingPacket Recieved! " + originator + " to the destination: " + p.ping);
 		// if packet is recieved and ping is false, send ack, if false calc time stamp
@@ -118,4 +140,14 @@ long delay = 1000;
 			nic.sendOnLink(i, p);
 		}
 	}
+    public void processLinkStatePacket(int originator, LinkStatePacket p){
+        	debug.println(3,
+				"(LinkStateRouter.pPP): LinkStatePacket Recieved! " + originator + " to the destination: " );
+                if(nodeSeqNums.get(originator) > p.sequenceNum){
+                    nodeSeqNums.put(originator, p.sequenceNum);
+                    networkGraph.put(originator, p.neighborDistance);
+                }
+
+    }
+    //check seq num
 }
