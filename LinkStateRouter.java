@@ -143,11 +143,18 @@ public static class PingPacket {
     public void processLinkStatePacket(int originator, LinkStatePacket p){
         	debug.println(3,
 				"(LinkStateRouter.pPP): LinkStatePacket Recieved! " + originator + " to the destination: " );
-                if(nodeSeqNums.get(originator) > p.sequenceNum){
-                    nodeSeqNums.put(originator, p.sequenceNum);
-                    networkGraph.put(originator, p.neighborDistance);
+                Integer oldSeqNum = nodeSeqNums.get(p.source);
+                 if(oldSeqNum == null || oldSeqNum < p.sequenceNum) {
+                    nodeSeqNums.put(p.source, p.sequenceNum);
+                    networkGraph.put(p.source, p.neighborDistance);
+                    for (int i = 0; i < nic.getOutgoingLinks().size(); i++) {
+                        nic.sendOnLink(i, p);
                 }
+            
 
+    
     }
+    
     //check seq num
+    }
 }
