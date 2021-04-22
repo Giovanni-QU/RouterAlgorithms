@@ -46,6 +46,7 @@ public static class PingPacket {
     int distances[];//the distance to each neighbor of this node
     HashMap<Integer, HashMap<Integer, Integer>> networkGraph; //the graph of the network containing each node and then each node's neighbors and distance to that neighot
     HashMap<Integer, Integer> nodeSeqNums; //used for tracking seq num for new link state packets
+    HashMap<Integer, Integer> routingTable; //maps destinations to links
     int currSeqNum;
     public LinkStateRouter(int nsap, NetworkInterface nic) {
         super(nsap, nic);
@@ -63,6 +64,7 @@ public static class PingPacket {
             if (System.currentTimeMillis() > timeToReCalc) {
 				sendPing();
                 sendLinkPacket();
+                rebuildTable();
 				timeToReCalc = System.currentTimeMillis() + delay;
 			}
             // See if there is anything to process
@@ -154,7 +156,66 @@ public static class PingPacket {
 
     
     }
-    
-    //check seq num
     }
+    public void rebuildTable(){
+
+        HashMap<Integer, Integer> finalLink = new HashMap<>(); //Key: Integer (NSAP Destination), Value: Integer (Link Index to use)
+        HashMap<Integer, Integer> finalDistance = new HashMap<>(); //Key: Integer (NSAP Destination), Value: Integer (Shortest Distance)
+
+  HashMap<Integer, Integer> workingLink = new HashMap<>(); //Key: Integer (NSAP Destination), Value: Integer (Link Index to use)
+  HashMap<Integer, Integer> workingDistance = new HashMap<>();// Key: Integer (NSAP Destination), Value: Integer (Shortest (Current Known) Distance)
+
+  //Initially, all four HashMaps are empty.
+  workingLink.put(nsap, -1);
+  //Add the router's own NSAP to workingLink with value -1.
+  workingDistance.put(nsap, 0);
+  //Add the router's own NSAP to workingDistance with value 0
+    Integer minKey = -1;
+    Integer minDistance = -1;
+    Integer minLink = -1;
+while(!workingDistance.isEmpty()){
+  
+    for(int i =0;i<workingDistance.size();i++){
+        if(minKey == -1) {
+            minKey = i;
+            minDistance = workingDistance.get(i);
+            minLink = workingLink.get(i);
+                   }
+        if(workingDistance.get(i) < minDistance){
+            // search through the workingDistance to find the key with smallest distance
+            minKey = i;
+            minDistance = workingDistance.get(i);
+            workingDistance.remove(i);
+            minLink = workingLink.get(i);
+            workingLink.remove(i);
+          
+        }
+    }
+    finalLink.put(minKey, minLink);
+    finalDistance.put(minKey, minDistance);
+    HashMap<Integer, Integer> neighbors = networkGraph.get(minKey);
+    for(int j = 0;j<neighbors.size();j++){
+        if(finalDistance.containsValue(neighbors.get(j))){
+            //skip node is finalized
+        }
+        else {
+            Integer newDistance = minDistance + neighbors.get(j);
+            Integer oldDistance = workingDistance.get(j);
+            if(oldDistance == null || newDistance < oldDistance){
+                workingDistance.put(j,newDistance);
+                if(minLink != -1){
+                    workingLink.put(j, minLink);
+                }
+                else{
+                    workingLink.put(j, nic.getOutgoingLinks().indexOf(j));
+                }
+            }
+        }
+    }
+}
+       
+    
+   routingTable = finalLink;
+    
+}
 }
