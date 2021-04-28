@@ -3,6 +3,12 @@ Introduction
 
 This project is a very simple network simulator that is designed mostly to practice
 creating router algorithms.
+
+
+More to come...
+
+Ells: worked on- DistanceVectorRouting.java
+
 ----------------
 Giovanni Greco
 Contributions: 
@@ -14,5 +20,4 @@ Aden Mariyappa
 Contributions:
 General code review
 Eventually scrapped progress towards Link State
-Attempt at outputting the data collected during runtime
------------------
+Attempt at outputting the data collected during runtime of DistanceVectorRouting.java
