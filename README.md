@@ -19,3 +19,7 @@ Attempt at outputting the data collected during runtime
 Christian Cooper
 Contributions:
 Assisted group members in multiple tasks as well as implementing the algorithm that allows for calculating distances and storing the value
+-----------------
+Ellsworth Evarts
+Contributions:
+Distance Vector including: process Ping Packet, distance calculation, routing table, prcoess Distance Vector Packet
