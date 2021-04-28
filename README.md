@@ -10,3 +10,9 @@ Setup Github, shared screen during team work sessions, wrote code for first step
 Distance Vector including: initial data structures, Ping packet, routing Ping Packets. 
 Did all of Link State
 -----------------
+Aden Mariyappa
+Contributions:
+General code review
+Eventually scrapped progress towards Link State
+Attempt at outputting the data collected during runtime
+-----------------
