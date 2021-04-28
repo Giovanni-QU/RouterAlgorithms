@@ -6,6 +6,7 @@
  ***************/
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 
 public class LinkStateRouter extends Router {
     // A generator for the given LinkStateRouter class
@@ -42,6 +43,21 @@ public static class PingPacket {
 
 		}
 	}
+    public static class Packet {
+		// This is how we will store our Packet Header information
+
+		Integer source; 
+		Integer destination;
+        Object payload;
+        int hopCount;
+
+		public Packet(Integer source, Integer destination, Object payload, int hopCount) {
+			this.source = source;
+            this.destination = destination;
+            this.payload = payload;
+            this.hopCount = hopCount;
+		}
+	}
     Debug debug;
     int distances[];//the distance to each neighbor of this node
     HashMap<Integer, HashMap<Integer, Integer>> networkGraph; //the graph of the network containing each node and then each node's neighbors and distance to that neighot
@@ -56,6 +72,7 @@ public static class PingPacket {
         networkGraph = new HashMap<>();
         currSeqNum = 0;
         nodeSeqNums = new HashMap<>();
+        routingTable = new HashMap<>();
     }
     long delay = 1000;
     public void run() {
@@ -73,8 +90,9 @@ public static class PingPacket {
             if (toSend != null) {
                 // There is something to send out
                 process = true;
-                
                 debug.println(3, "(LinkStateRouter.run): I am being asked to transmit: " + toSend.data + " to the destination: " + toSend.destination);
+                Packet p = new Packet(nsap, toSend.destination, toSend.data, 20);
+                routePacket(p);
             }
 
             NetworkInterface.ReceivePair toRoute = nic.getReceived();
@@ -87,11 +105,30 @@ public static class PingPacket {
 					// PingPacket p = (PingPacket) toRoute.data;
 					//
 				}
-                if (toRoute.data instanceof LinkStatePacket) {
+                else if (toRoute.data instanceof LinkStatePacket) {
 					
-					processLinkStatePacket(toRoute.originator, (LinkStatePacket) toRoute.data); //not implemented yet
+					processLinkStatePacket(toRoute.originator, (LinkStatePacket) toRoute.data); 
 				}
-                debug.println(3, "(LinkStateRouter.run): I am being asked to transmit: " + toSend.data + " to the destination: " + toSend.destination);
+                 else if (toRoute.data instanceof Packet) {
+                      Packet p = (Packet) toRoute.data;
+					if (p.destination == nsap) {
+                        // It made it!  Inform the "network" for statistics tracking purposes
+                        debug.println(4, "(FloodRouter.run): Packet has arrived!  Reporting to the NIC - for accounting purposes!");
+                        debug.println(6, "(FloodRouter.run): Payload: " + p.payload);
+                        nic.trackArrivals(p.payload);
+                    } else if (p.hopCount > 0) {
+                        // Still more routing to do
+                        p.hopCount--;
+                       routePacket(p); 
+                    } else {
+                        debug.println(5, "Packet has too many hops.  Dropping packet from " + p.source + " to " + p.destination + " by router " + nsap);
+                    }
+					
+				}
+                else{
+                debug.println(3, "Unrecognized Packet Type");
+
+                }
             }
 
             if (!process) {
@@ -100,6 +137,24 @@ public static class PingPacket {
             }
         }
     }
+    public void printTable(HashMap<Integer,Integer> t){
+         debug.println(3, "//////////////");
+        for(Map.Entry<Integer,Integer> e: t.entrySet()){
+           debug.println(3, e.getKey() + " " + e.getValue());
+        }
+        debug.println(3, "//////////////");
+    }
+    
+  public void routePacket(Packet p){
+      Integer link = routingTable.get(p.destination);
+      if(link == null){
+          debug.println(3, "Unrecognized IP address");
+      }
+      else{
+          nic.sendOnLink(link, p);
+      }
+  }
+
   public void sendPing(){
       for (int i = 0; i < nic.getOutgoingLinks().size(); i++) {
 			// make packet
@@ -158,64 +213,57 @@ public static class PingPacket {
     }
     }
     public void rebuildTable(){
-
+        System.out.println("uild tale eing called");
         HashMap<Integer, Integer> finalLink = new HashMap<>(); //Key: Integer (NSAP Destination), Value: Integer (Link Index to use)
         HashMap<Integer, Integer> finalDistance = new HashMap<>(); //Key: Integer (NSAP Destination), Value: Integer (Shortest Distance)
 
-  HashMap<Integer, Integer> workingLink = new HashMap<>(); //Key: Integer (NSAP Destination), Value: Integer (Link Index to use)
-  HashMap<Integer, Integer> workingDistance = new HashMap<>();// Key: Integer (NSAP Destination), Value: Integer (Shortest (Current Known) Distance)
+        HashMap<Integer, Integer> workingLink = new HashMap<>(); //Key: Integer (NSAP Destination), Value: Integer (Link Index to use)
+        HashMap<Integer, Integer> workingDistance = new HashMap<>();// Key: Integer (NSAP Destination), Value: Integer (Shortest (Current Known) Distance)
 
   //Initially, all four HashMaps are empty.
-  workingLink.put(nsap, -1);
-  //Add the router's own NSAP to workingLink with value -1.
-  workingDistance.put(nsap, 0);
-  //Add the router's own NSAP to workingDistance with value 0
-    Integer minKey = -1;
+  workingLink.put(nsap, -1); //Add the router's own NSAP to workingLink with value -1.
+  workingDistance.put(nsap, 0); //Add the router's own NSAP to workingDistance with value 0
+   
+while(!workingDistance.isEmpty()){
+     Integer minKey = -1;
     Integer minDistance = -1;
     Integer minLink = -1;
-while(!workingDistance.isEmpty()){
-  
-    for(int i =0;i<workingDistance.size();i++){
-        if(minKey == -1) {
-            minKey = i;
-            minDistance = workingDistance.get(i);
-            minLink = workingLink.get(i);
-                   }
-        if(workingDistance.get(i) < minDistance){
-            // search through the workingDistance to find the key with smallest distance
-            minKey = i;
-            minDistance = workingDistance.get(i);
-            workingDistance.remove(i);
-            minLink = workingLink.get(i);
-            workingLink.remove(i);
-          
-        }
+    // search through the workingDistance to find the key with smallest distance
+    for(Map.Entry<Integer,Integer> e: workingDistance.entrySet()){
+        if(minKey == -1 || e.getValue() < minDistance) {
+            minKey = e.getKey();
+            minDistance = e.getValue();
+            minLink = workingLink.get(minKey);
     }
+    }
+     workingDistance.remove(minKey);
+      workingLink.remove(minKey);  
     finalLink.put(minKey, minLink);
     finalDistance.put(minKey, minDistance);
     HashMap<Integer, Integer> neighbors = networkGraph.get(minKey);
-    for(int j = 0;j<neighbors.size();j++){
-        if(finalDistance.containsValue(neighbors.get(j))){
+    if(neighbors != null){
+    for(Map.Entry<Integer,Integer> u : neighbors.entrySet()){
+        if(finalDistance.containsKey(u.getKey())){
             //skip node is finalized
         }
         else {
-            Integer newDistance = minDistance + neighbors.get(j);
-            Integer oldDistance = workingDistance.get(j);
+            Integer newDistance = minDistance + u.getValue();
+            Integer oldDistance = workingDistance.get(u.getKey());
             if(oldDistance == null || newDistance < oldDistance){
-                workingDistance.put(j,newDistance);
+                workingDistance.put(u.getKey(),newDistance);
                 if(minLink != -1){
-                    workingLink.put(j, minLink);
+                    workingLink.put(u.getKey(), minLink);
                 }
                 else{
-                    workingLink.put(j, nic.getOutgoingLinks().indexOf(j));
+                    workingLink.put(u.getKey(), nic.getOutgoingLinks().indexOf(u.getKey()));
                 }
             }
         }
+      }
+     }
     }
-}
-       
-    
-   routingTable = finalLink;
-    
-}
+    routingTable = finalLink;
+     System.out.println(routingTable);
+    printTable(routingTable); 
+    }
 }
